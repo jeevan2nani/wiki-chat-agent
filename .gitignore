@@ -1,0 +1,12 @@
+__pycache__/
+venv/
+env/
+.venv
+.env
+
+# Logs
+*.log
+app/logs/
+
+# ChromaDB data
+chroma_db/

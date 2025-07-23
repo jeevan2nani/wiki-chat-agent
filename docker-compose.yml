@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: wiki_chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  backend:
+    build: 
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: wiki_backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - chromadb
+    environment:
+      # Required API Keys
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-API_KEY}
+      
+      # LangSmith Observability Configuration
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY:-your-langsmith-api-key}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-wiki-chat-agent}
+      - LANGCHAIN_ENDPOINT=${LANGCHAIN_ENDPOINT:-https://api.smith.langchain.com}
+      
+      # Database Configuration
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      
+      # Application Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - MAX_DOCUMENTS=${MAX_DOCUMENTS:-5}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      
+      # OpenAI Configuration
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-URL}
+      - AZURE_OPENAI_MODEL=${AZURE_OPENAI_MODEL:-MODEL}
+      - AZURE_DEPLOYMENT=${AZURE_DEPLOYMENT:-DEPLOYMENT}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-API_KEY}
+      - OPENAI_API_VERSION=${OPENAI_API_VERSION:-2025-01-01-preview}
+
+    volumes:
+      - ./app:/app
+      - backend_logs:/app/logs
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wiki_frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+    volumes:
+      - ./frontend:/app
+
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+# Shared network for service communication
+networks:
+  default:
+    name: wiki_network
+    driver: bridge
+
+# Persistent volumes for data storage
+volumes:
+  chroma_data:
+    name: wiki_chroma_data
+    driver: local
+  backend_logs:
+    name: wiki_backend_logs
+    driver: local
